@@ -1,10 +1,8 @@
 #!/bin/bash
-# Builds two IPKs (one package can only own one launch point on this TV, so the
-# settings screen ships as its own package):
-#   org.hermes.reticle_<ver>_all.ipk           overlay app + luna service
-#   org.hermes.reticle.settings_<ver>_all.ipk  the on-TV settings screen
+# Builds ONE IPK containing the overlay app, the settings app and the luna service:
+#   org.hermes.reticle_<ver>_all.ipk
 # Layout matches ares-package output (checked against the Homebrew Channel IPK):
-#   usr/palm/applications/<id>/
+#   usr/palm/applications/<id>/   (two apps: overlay, hidden from the launcher; settings)
 #   usr/palm/services/<id>.service/
 #   usr/palm/packages/<id>/packageinfo.json
 set -euo pipefail
@@ -37,7 +35,7 @@ Section: misc
 Priority: optional
 Architecture: all
 Installed-Size: 0
-Maintainer: Hermes <nobody@example.com>
+Maintainer: XerxeS2K1 <180217047+XerxeS2K1@users.noreply.github.com>
 Description: $DESC
 webOS-Package-Format-Version: 2
 webOS-Packager-Version: x.y.x
@@ -53,34 +51,20 @@ EOF
   sha256sum "$OUT"
 }
 
-# ---- package 1: overlay + service -----------------------------------------
+# ---- the package -----------------------------------------------------------
 M=$(mktemp -d)
-mkdir -p "$M/usr/palm/applications/$BASE" "$M/usr/palm/services/$BASE.service" \
-         "$M/usr/palm/packages/$BASE"
-cp app/appinfo.json app/icon.png app/index.html app/settings.json app/luna.js app/designs.js app/design.js "$M/usr/palm/applications/$BASE/"
+mkdir -p "$M/usr/palm/applications/$BASE" "$M/usr/palm/applications/$BASE.settings" \
+         "$M/usr/palm/services/$BASE.service" "$M/usr/palm/packages/$BASE"
+cp app/appinfo.json app/icon.png app/largeIcon.png app/index.html app/settings.json app/luna.js app/designs.js app/design.js "$M/usr/palm/applications/$BASE/"
+cp settings/appinfo.json settings/index.html app/icon.png app/largeIcon.png app/luna.js app/designs.js app/design.js "$M/usr/palm/applications/$BASE.settings/"
 cp service/service.js service/package.json service/services.json "$M/usr/palm/services/$BASE.service/"
 cat >"$M/usr/palm/packages/$BASE/packageinfo.json" <<EOF
 {
   "id": "$BASE",
   "version": "$VER",
-  "app": "$BASE",
-  "services": ["$BASE.service"]
-}
-EOF
-build_ipk "$BASE" "Reticle overlay for HDMI inputs" "$M"
-rm -rf "$M"
-
-# ---- package 2: settings screen -------------------------------------------
-S=$(mktemp -d)
-mkdir -p "$S/usr/palm/applications/$BASE.settings" "$S/usr/palm/packages/$BASE.settings"
-cp settings/appinfo.json settings/index.html app/icon.png app/luna.js app/designs.js app/design.js "$S/usr/palm/applications/$BASE.settings/"
-cat >"$S/usr/palm/packages/$BASE.settings/packageinfo.json" <<EOF
-{
-  "id": "$BASE.settings",
-  "version": "$VER",
   "app": "$BASE.settings",
   "services": ["$BASE.service"]
 }
 EOF
-build_ipk "$BASE.settings" "Reticle settings screen for the TV" "$S"
-rm -rf "$S"
+build_ipk "$BASE" "Crosshair overlay for HDMI inputs, with on-TV settings" "$M"
+rm -rf "$M"

@@ -564,24 +564,20 @@ def supervise():
             time.sleep(3)
 
 
-BOOT_MARK = "/media/developer/reticle-boot-id"
+# /tmp is a RAM disk, wiped on every TV restart but kept when only this service restarts.
+# (The kernel boot id is NOT usable here: this TV reports the same id after every reboot.)
+BOOT_MARK = "/tmp/reticle-booted"
 
 
 def start_off_after_boot():
     """The reticle starts OFF after every TV restart; the user turns it on from
     the web page or the settings tile. Everything else (shape, colour, inputs)
-    is kept. A restart is spotted by the kernel boot id changing. The luna bus
-    may not be ready yet at boot, so retry until the OFF is confirmed."""
+    is kept. A restart is spotted by the marker in /tmp being absent. The luna
+    bus may not be ready yet at boot, so retry until the OFF is confirmed."""
     try:
-        with open("/proc/sys/kernel/random/boot_id") as fh:
-            now = fh.read().strip()
-        try:
-            with open(BOOT_MARK) as fh:
-                before = fh.read().strip()
-        except Exception:
-            before = ""
-        if not now or now == before:
+        if os.path.exists(BOOT_MARK):
             return
+        now = "1"
         for attempt in range(40):
             try:
                 luna("putState", {"enabled": False})

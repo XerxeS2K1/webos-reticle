@@ -49,6 +49,13 @@
   }
   #toast { color: #4fd18b; opacity: 0; transition: opacity .2s; }
   #toast.show { opacity: 1; }
+  #web {
+    margin-top: 18px; padding: 16px 22px; border-radius: 12px;
+    background: #12201a; border: 2px solid #2f6b4a; flex: 0 0 auto;
+  }
+  #web .t { font-size: 20px; color: #8fb3a0; letter-spacing: .04em; }
+  #web .a { font-size: 40px; font-weight: 600; color: #7ff0b4; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  #web .d { font-size: 19px; color: #7d909d; margin-top: 4px; }
   .arrow { color: #566873; font-size: 20px; margin: 0 6px; }
   .row.sel .arrow { color: #4fd18b; }
 </style>
@@ -58,7 +65,12 @@
   <div id="left">
     <div id="stage">
       <canvas id="prev"></canvas>
-      <div id="stageTag">preview — this is how it looks on the picture</div>
+      <div id="stageTag">Preview</div>
+    </div>
+    <div id="web">
+      <div class="t">WEB UI — CONTROL THE RETICLE FROM YOUR PHONE OR PC</div>
+      <div class="a" id="webaddr">finding address…</div>
+      <div class="d">Open this address in a browser on the same Wi-Fi. Same settings as here, plus a colour wheel and design picker.</div>
     </div>
   </div>
   <div id="right">
@@ -217,7 +229,7 @@
   function render() {
     updateRows(); draw();
     if (state && state.url) {
-      document.getElementById("hint").textContent = "Phone / PC page: " + state.url.replace("http://", "");
+      document.getElementById("webaddr").textContent = state.url.replace("http://", "");
     }
   }
 
@@ -494,8 +506,7 @@
     state = res.state;
     available = res.available || available;
     build();
-    updateRows();
-    draw();
+    render();
     document.getElementById("sub").textContent = state.statePath
       ? "Up / Down to move · Left / Right to change · Back to exit"
       : "Up / Down to move · Left / Right to change · Back to exit";
