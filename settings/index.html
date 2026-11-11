@@ -526,7 +526,28 @@
 
   /* ---------- boot ---------- */
 
-  req("getState", {}, function (res) {
+  // The web server + start-off-at-boot daemon lives in the package but needs root to
+  // start. If it is not answering, ask the Homebrew Channel exec service to run the
+  // package's setup script (links the boot hook and starts the daemon). Harmless if already done.
+  function ensureDaemon(done) {
+    var finished = false;
+    function fin() { if (!finished) { finished = true; done(); } }
+    fetch(PROXY + "/healthz", { cache: "no-store" }).then(function (r) { if (r.ok) fin(); else throw 0; })
+      .catch(function () {
+        var dir = location.pathname.replace(/\/applications\/[^\/]+\/[^\/]*$/, "/services/org.hermes.reticle.service");
+        if (dir === location.pathname) dir = "/media/developer/apps/usr/palm/services/org.hermes.reticle.service";
+        if (!window.webOS || !webOS.service) { fin(); return; }
+        webOS.service.request("luna://org.webosbrew.hbchannel.service/exec", {
+          method: "exec",
+          parameters: { command: "sh '" + dir + "/reticle-setup.sh'" },
+          onSuccess: function () { setTimeout(fin, 3500); },
+          onFailure: function () { fin(); }
+        });
+        setTimeout(fin, 9000);
+      });
+  }
+
+  ensureDaemon(function () { req("getState", {}, function (res) {
     if (!res || !res.state) { toast("no state"); return; }
     state = res.state;
     available = res.available || available;
@@ -535,7 +556,7 @@
     document.getElementById("sub").textContent = state.statePath
       ? "Up / Down to move · Left / Right to change · Back to exit"
       : "Up / Down to move · Left / Right to change · Back to exit";
-  });
+  }); });
 
   // pick up changes made from the web page while this screen is open
   var lastSeen = "";

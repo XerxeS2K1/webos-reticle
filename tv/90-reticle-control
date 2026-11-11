@@ -1,5 +1,0 @@
-#!/bin/sh
-# init.d entry: start the reticle control service detached.
-# run-parts waits for each script, so this must not stay in the foreground.
-[ -x /media/developer/reticle-control.py ] && nohup /media/developer/reticle-control.py >/dev/null 2>&1 &
-exit 0

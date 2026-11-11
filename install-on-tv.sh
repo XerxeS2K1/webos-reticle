@@ -19,8 +19,8 @@ install_one() {
 install_one /tmp/reticle.ipk
 
 echo "== on-disk versions:"
+grep -o '"version": *"[^"]*"' /media/developer/apps/usr/palm/applications/org.hermes.reticle.overlay/appinfo.json
 grep -o '"version": *"[^"]*"' /media/developer/apps/usr/palm/applications/org.hermes.reticle/appinfo.json
-grep -o '"version": *"[^"]*"' /media/developer/apps/usr/palm/applications/org.hermes.reticle.settings/appinfo.json
 pkill -f "[p]ython3 -m http.server 8099" 2>/dev/null
 rm -f /tmp/reticle.ipk
 echo "== done"

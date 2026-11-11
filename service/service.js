@@ -2,8 +2,8 @@
  *
  * The overlay window cannot hold the remote's keys (it never becomes the
  * foreground app), so settings live here and two thin apps talk to us:
- *   org.hermes.reticle          - the transparent overlay, polls getState
- *   org.hermes.reticle.settings - on-TV settings screen, calls putState
+ *   org.hermes.reticle.overlay  - the transparent overlay, polls the daemon
+ *   org.hermes.reticle          - main app: on-TV settings screen (owns the luna role)
  *
  * We also relaunch the overlay whenever a watched input comes to the front:
  * the platform hides an overlay the instant any app (including an HDMI input)
@@ -12,7 +12,7 @@
 var Service = require("webos-service");
 var fs = require("fs");
 
-var APP_ID = "org.hermes.reticle";
+var APP_ID = "org.hermes.reticle.overlay";
 var LOG = "/tmp/reticle-service.log";
 var SERVICE_DIR = "/media/developer/apps/usr/palm/services/org.hermes.reticle.service";
 var STATE_PATHS = [

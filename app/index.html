@@ -222,41 +222,30 @@
       if (!raw) return;
       var s = JSON.parse(raw);
       if (!s || !s.reticle) return;
-      webOS.service.request(SERVICE + "/putState", {
-        method: "putState",
-        parameters: { restore: s },
-        onSuccess: function () {},
-        onFailure: function () {}
-      });
+      /* settings are restored by the daemon from its own backup */
     } catch (err) { /* nothing cached yet */ }
   }
 
+  // The overlay is not the package's main app, so webOS gives it no luna role: it
+  // talks to the reticle daemon over localhost HTTP (served from memory, cheap to poll).
+  var API = "http://127.0.0.1:8765";
   function poll() {
-    if (!(window.webOS && webOS.service && webOS.service.request)) {
-      setTimeout(poll, 1000);
-      return;
-    }
-    webOS.service.request(SERVICE + "/getState", {
-      method: "getState",
-      parameters: { who: "overlay" },
-      onSuccess: function (res) {
+    fetch(API + "/api/state", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (st) {
         fails = 0;
-        applyState(res && res.state);
+        applyState(st);
         if (++polls % 6 === 0) {
-          webOS.service.request(SERVICE + "/report", {
-            method: "report",
-            parameters: { color: cfg.color, size: cfg.size, style: cfg.style, opacity: cfg.opacity, hidden: hidden },
-            onSuccess: function () {},
-            onFailure: function () {}
-          });
+          fetch(API + "/api/report", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ color: cfg.color, size: cfg.size, style: cfg.style, opacity: cfg.opacity, hidden: hidden }) })
+            .catch(function () {});
         }
-      },
-      onFailure: function () {
-        // service not up yet (or crashed): keep the last look, keep asking
+      })
+      .catch(function () {
+        // daemon not up yet (or restarting): keep the last look, keep asking
         if (++fails === 3) loadSettings().then(draw);
-      },
-      onComplete: function () { setTimeout(poll, 500); }
-    });
+      })
+      .then(function () { setTimeout(poll, 500); });
   }
 
   // Remote keys only reach us on some firmware; if they do, they nudge the look.
