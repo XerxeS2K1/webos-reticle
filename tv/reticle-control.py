@@ -209,7 +209,8 @@ button.reset { background: none; border: 1px solid #2b343c; color: #8b96a2; font
 </div>
 
 <div class="card">
-  <div class="row"><label class="name">Shape</label></div>
+  <div class="row"><label class="name">Design</label><span id="image_v" style="color:#8b96a2;font-size:13px">built-in</span></div>
+  <div class="sub" style="margin:6px 0 8px">Pick a simple shape or one of 200 pictures. Colour, size and opacity apply to all of them.</div>
   <div class="styles" id="styles">
     <button data-style="cross">Cross</button>
     <button data-style="dot">Dot</button>
@@ -218,12 +219,7 @@ button.reset { background: none; border: 1px solid #2b343c; color: #8b96a2; font
     <button data-style="corners">Corners</button>
     <button data-style="brackets">Brackets</button>
   </div>
-</div>
-
-<div class="card">
-  <div class="row"><label class="name">Design (200 to pick from)</label><span id="image_v" style="color:#8b96a2;font-size:13px">built-in</span></div>
-  <div class="sub" style="margin:6px 0 0">Tap any picture. Colour, size and opacity still apply. Tap a shape above to go back to the built-in ones.</div>
-  <div class="pick" id="pick"></div>
+  <div class="pick" id="pick" style="margin-top:8px"></div>
 </div>
 
 <div class="card">
@@ -345,7 +341,7 @@ function render() {
     el.classList.toggle("on", im < 0 && el.dataset.style === r.style));
   document.querySelectorAll("#pick .pk").forEach(el =>
     el.classList.toggle("on", Number(el.dataset.i) === im));
-  document.getElementById("image_v").textContent = im < 0 ? "built-in" : "#" + im;
+  document.getElementById("image_v").textContent = im < 0 ? (document.querySelector("#styles button.on") || {}).textContent || "" : "#" + im;
   document.querySelectorAll("#inputs input").forEach(el =>
     el.checked = state.inputs.includes(el.value));
   for (const k of ["size", "gap", "thickness", "dot", "dx", "dy"]) {

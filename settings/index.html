@@ -203,8 +203,7 @@
   function buildRows() {
     rows = [];
     rows.push({ key: "enabled", label: "Reticle", kind: "bool" });
-    rows.push({ key: "style", label: "Shape", kind: "enum", values: SHAPES, labels: SHAPE_LABELS });
-    rows.push({ key: "image", label: "Design (0-199)", kind: "num", min: -1, max: 199, step: 1 });
+    rows.push({ key: "design", label: "Design", kind: "design" });
     rows.push({ key: "color", label: "Colour presets", kind: "color" });
     rows.push({ key: "hue", label: "Colour wheel: hue", kind: "hsv", i: 0 });
     rows.push({ key: "sat", label: "Colour wheel: strength", kind: "hsv", i: 1 });
@@ -247,6 +246,13 @@
     updateRows();
   }
 
+  function designPos() {
+    var rt = state.reticle, im = Math.round(Number(rt.image));
+    if (im >= 0 && im <= 199) return SHAPES.length + im;
+    var si = SHAPES.indexOf(rt.style);
+    return si < 0 ? 0 : si;
+  }
+
   function rowValue(r) {
     var rt = state.reticle;
     switch (r.kind) {
@@ -254,8 +260,9 @@
         if (r.key === "input") return state.inputs.indexOf(r.input) >= 0 ? "On" : "Off";
         if (r.key === "enabled") return state.enabled ? "On" : "Off";
         return rt[r.key] ? "On" : "Off";
-      case "enum":
-        return r.labels[r.values.indexOf(rt.style)] || rt.style;
+      case "design":
+        var dn = designPos();
+        return dn < SHAPES.length ? SHAPE_LABELS[dn] : "#" + (dn - SHAPES.length);
       case "color":
         return '<span class="swatch" style="background:' + rt.color + '"></span>' + rt.color;
       case "hsv":
@@ -307,10 +314,11 @@
         var patch = {}; patch[r.key] = !rt[r.key];
         put({ reticle: patch });
       }
-    } else if (r.kind === "enum") {
-      var i = SHAPES.indexOf(rt.style);
-      i = (i + dir + SHAPES.length) % SHAPES.length;
-      put({ reticle: { style: SHAPES[i] } });
+    } else if (r.kind === "design") {
+      // one list: the 6 simple shapes first, then pictures #0-#199
+      var total = SHAPES.length + 200;
+      var dp = (designPos() + dir + total) % total;
+      put({ reticle: dp < SHAPES.length ? { style: SHAPES[dp], image: -1 } : { image: dp - SHAPES.length } });
     } else if (r.kind === "color") {
       var c = COLORS.indexOf(String(rt.color).toLowerCase());
       c = (c < 0 ? 0 : c + dir + COLORS.length) % COLORS.length;
