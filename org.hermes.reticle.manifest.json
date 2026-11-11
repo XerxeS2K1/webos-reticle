@@ -3,8 +3,9 @@
   "version": "0.7.1",
   "type": "web",
   "title": "Reticle + Web UI",
-  "iconUri": "assets/icons/icon160.png",
-  "sourceUrl": "https://github.com/XerxeS2K1/webos-reticle/releases/download/v0.7.1/org.hermes.reticle_0.7.1_all.ipk",
+  "iconUri": "https://raw.githubusercontent.com/XerxeS2K1/webos-reticle/main/assets/icons/icon160.png",
+  "sourceUrl": "https://github.com/XerxeS2K1/webos-reticle",
+  "rootRequired": true,
   "ipkUrl": "org.hermes.reticle_0.7.1_all.ipk",
   "ipkHash": {
     "sha256": "efe39079f011e7b83274e1a7fe4999b86758e6d74eb9f551332ed561f5027f16"

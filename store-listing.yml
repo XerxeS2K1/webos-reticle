@@ -1,0 +1,32 @@
+title: Reticle + Web UI
+iconUri: https://raw.githubusercontent.com/XerxeS2K1/webos-reticle/main/assets/icons/icon160.png
+manifestUrl: https://github.com/XerxeS2K1/webos-reticle/releases/latest/download/org.hermes.reticle.manifest.json
+category: utility
+pool: main
+description: |
+  # Reticle
+  Draws a crosshair over an HDMI input (console or PC) without touching the HDMI signal,
+  so Game Mode, ALLM and the console's own HDR / VRR stay as they are.
+
+  - 200 reticle designs, each with adjustable thickness and centre gap, plus six simple shapes
+  - colour wheel and presets, size, offset, opacity, optional centre dot
+  - pick which HDMI inputs show it
+  - control it on the TV or from a phone / PC browser (`http://<tv-ip>:8765/`)
+  - starts **off** after every TV restart; turn it on when you want it
+
+  The [homebrew channel](https://github.com/webosbrew/webos-homebrew-channel/) with root access is required.
+
+  ## How to use
+  Open **Reticle + Web UI** once after installing: that starts the background service and
+  registers it to start at boot. The settings screen shows the web address.
+
+  Source, build notes and licences: https://github.com/XerxeS2K1/webos-reticle
+screenshots:
+  - url: https://raw.githubusercontent.com/XerxeS2K1/webos-reticle/main/screenshots/settings.png
+    caption: Settings screen on the TV
+  - url: https://raw.githubusercontent.com/XerxeS2K1/webos-reticle/main/screenshots/web-ui-phone.png
+    caption: Web page on a phone
+  - url: https://raw.githubusercontent.com/XerxeS2K1/webos-reticle/main/screenshots/designs-arrows.png
+    caption: Some of the 200 designs
+funding:
+  github: [ XerxeS2K1 ]
