@@ -30,7 +30,7 @@ then install it from the Homebrew Channel, or with `./install-on-tv.sh`. Open
 starts the background daemon. After that the web page is at `http://<tv-ip>:8765/`
 (the address is also shown on the settings screen).
 
-Uninstalling the app removes everything it added, except the saved-settings backup in
+Uninstalling the app leaves only a dead link in `/var/lib/webosbrew/init.d` (ignored at boot) and the saved-settings backup in
 `/media/developer/reticle-backup.json`.
 
 ## How it works
