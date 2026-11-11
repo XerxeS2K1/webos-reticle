@@ -520,6 +520,19 @@
       : "Up / Down to move · Left / Right to change · Back to exit";
   });
 
+  // pick up changes made from the web page while this screen is open
+  var lastSeen = "";
+  setInterval(function () {
+    if (!state || pending) return;
+    req("getState", {}, function (res) {
+      if (!res || !res.state || pending) return;
+      var key = JSON.stringify([res.state.enabled, res.state.inputs, res.state.reticle]);
+      var mine = JSON.stringify([state.enabled, state.inputs, state.reticle]);
+      if (key !== lastSeen && key !== mine) { state = res.state; render(); }
+      lastSeen = key;
+    });
+  }, 1500);
+
   setTimeout(function () { if (!state) draw(); }, 400);
 })();
 </script>

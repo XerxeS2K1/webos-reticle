@@ -468,6 +468,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
+            log("change from %s: %s" % (self.client_address[0], json.dumps(body)[:100]))
             luna("putState", body)
             st = flat_state()
             save_backup(st)
