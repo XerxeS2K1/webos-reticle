@@ -1,107 +1,72 @@
 # Reticle — a crosshair overlay for LG webOS TVs
 
-A transparent overlay app plus a small control service, for drawing a reticle over
-an HDMI input (console, PC) without going through the HDMI signal itself — so Game
-Mode, ALLM and the console's own HDR/VRR are untouched.
+Draws a crosshair over an HDMI input (console, PC) **without touching the HDMI signal**,
+so Game Mode, ALLM and the console's own HDR / VRR stay exactly as they were.
 
-Built and tested on an LG C4 (`OLED42C44LA`), webOS 9.2.4, rooted, Homebrew Channel
-0.7.3.
+- 200 reticle designs (Kenney crosshair pack, CC0) plus six simple shapes
+- every design can be thickened or thinned, given a centre gap, recoloured (colour wheel
+  or presets), resized, nudged, and shown only on the inputs you choose
+- control it **on the TV** (the app's settings screen) or **from a phone / PC** over a web page
+- **starts off after every TV restart**; you turn it on when you want it
+- stays on across input switches
 
-## How it fits together
+![settings](screenshots/settings.png)
+
+## Requirements
+
+A **rooted** LG TV with the [Homebrew Channel](https://www.webosbrew.org/). Tested on an
+LG C4 (`OLED42C44LA`), webOS 9.2.4. The overlay and daemon use only features present
+from webOS 5 up (Node 8+), but only the C4 has been tested.
+
+## Install
+
+Homebrew Channel (once listed), or from a release IPK:
 
 ```
-  ┌─────────────── TV (webOS 9.2.4, rooted) ───────────────┐
-  │                                                        │
-  │  reticle-control.py  ── python3, port 8765             │
-  │    ├─ serves the control page  http://<tv>:8765/       │
-  │    ├─ supervises the overlay (relaunch on input switch)│
-  │    └─ /api/reticle.json ──┐                            │
-  │                           ▼                            │
-  │  org.hermes.reticle (web app, defaultWindowType        │
-  │  "overlay", transparent) ── full-screen canvas         │
-  │    polls 127.0.0.1:8765 every 400 ms, redraws on change│
-  └────────────────────────────────────────────────────────┘
+scp org.hermes.reticle_<version>_all.ipk root@<tv-ip>:/tmp/reticle.ipk
+```
+then install it from the Homebrew Channel, or with `./install-on-tv.sh`. Open
+**Reticle + Web UI** from the app list once; that links the start-at-boot hook and
+starts the background daemon. After that the web page is at `http://<tv-ip>:8765/`
+(the address is also shown on the settings screen).
+
+Uninstalling the app removes everything it added, except the saved-settings backup in
+`/media/developer/reticle-backup.json`.
+
+## How it works
+
+```
+ org.hermes.reticle          main app: settings screen on the TV
+ org.hermes.reticle.overlay  transparent full-screen canvas, hidden from the launcher
+ org.hermes.reticle.service  luna service: stores the settings
+ reticle daemon (Node)       web page + JSON API on :8765, relaunches the overlay,
+                             switches the reticle off on boot. Started by the app
+                             through the Homebrew Channel exec service and by an
+                             init.d symlink at boot.
 ```
 
-Two platform rules drive the design:
+Two platform facts drive the design: an overlay window is hidden the moment any app
+launches (including an HDMI input) and does not come back, so something outside the
+overlay must relaunch it once the input is up; and the overlay is not the package's
+main app, so it reads settings from the daemon over `127.0.0.1` instead of luna.
 
-1. **An overlay window is hidden the instant any app launches**, including an HDMI
-   input (~20 ms after the input's own `visible:true`), and it does not come back.
-   So the app must be launched *after* the input is up — that is the supervisor's
-   job. No window type survives this (`float` still maps to
-   `_WEBOS_WINDOW_TYPE_OVERLAY`).
-2. **An overlay never becomes the foreground app**, so the remote's keys keep going
-   to the input and the app cannot capture them. Control therefore lives outside the
-   app: a web page on the TV, reachable from any phone or PC on the LAN.
+Design pictures are not shipped as images: `tools/convert-designs.py` turns the pack
+into geometry that is redrawn at any size, thickness and gap. A few designs have an
+explicit aim-point shift so the point you aim with sits on the exact screen centre.
 
-## Control page
+## Build
 
-Open `http://<tv-ip>:8765/` (the TV's Settings app shows the exact address).
-
-- power switch — on/off. Off clears the canvas and calls `window.close()`, so the
-  overlay window is gone rather than sitting blank above the picture.
-- colour presets + picker, size, centre gap, thickness, opacity, centre dot,
-  offset X/Y, and six shapes: cross, dot, circle, T mark, corners, brackets.
-- which inputs the reticle should appear on (HDMI 1–4).
-
-Every change is applied live: the app re-polls and redraws in under half a second,
-no relaunch. Settings persist in `/var/lib/webosbrew/reticle-state.json`.
-
-## Files on the TV
-
-| Path | What |
-| --- | --- |
-| `/media/developer/apps/usr/palm/applications/org.hermes.reticle/` | the overlay app (installed IPK) |
-| `/media/developer/reticle-control.py` | control service + supervisor |
-| `/var/lib/webosbrew/reticle-state.json` | enabled, target inputs, reticle settings |
-| `/var/lib/webosbrew/init.d/90-reticle-control` | starts the service at boot |
-| `/tmp/reticle-control.log` | service log (foreground changes, launches) |
-
-## API
-
-- `GET /api/state` — full state plus the input list and defaults.
-- `POST /api/state` — same shape back; unknown keys ignored, opacity clamped 0.1–1.
-- `GET /api/reticle.json` — what the app polls: `{enabled, reticle}`.
-
-```sh
-curl -X POST -d '{"enabled":false}' http://<tv>:8765/api/state
-curl -X POST -d '{"reticle":{"color":"#ff2d55","size":44,"style":"circle"}}' http://<tv>:8765/api/state
+```
+./build.sh        # produces org.hermes.reticle_<version>_all.ipk
 ```
 
-## Build and install
+## How this was made
 
-```sh
-./build.sh                          # -> org.hermes.reticle_<ver>_all.ipk (ar archive)
-scp org.hermes.reticle_*.ipk root@<tv>:/tmp/reticle.ipk
-ssh root@<tv> 'sh -s' < install-on-tv.sh   # serves it on loopback, installs via HBC
-```
+The idea, direction, testing on the TV and every decision are by the repository owner.
+The code was written with substantial help from Claude (Anthropic's AI assistant), which
+also did much of the on-TV debugging; the owner reviewed and tested the results. Stated
+plainly because the webOS Homebrew rules ask for it.
 
-Reinstall after editing the app; `install-on-tv.sh` prints the version that landed
-on disk, because the Homebrew Channel call returns "Finished." even when it did not
-upgrade.
+## Licence
 
-## Dev helpers
-
-- `cdp-check.py` — canvas pixel probe + screenshot via CDP (needs
-  `ssh -L 9998:127.0.0.1:9998 root@<tv>`).
-- `cdp-eval.py '<js>'` — evaluate an expression in the running overlay.
-- `cdp-tweak.py` — dispatch key events.
-- `tv/probe-close.sh` — what the various close methods actually answer.
-
-## Known limits
-
-- ~2–2.5 s after switching to the console the cross appears (the supervisor waits
-  2 s for the input's window to settle before launching).
-- The remote cannot toggle it — no key reaches an overlay. Use the page; adding an
-  HA button on top of the API is a one-liner.
-- The page has no authentication: anyone on the LAN can change it.
-- Boot persistence via `init.d` is wired up but unproven until the next TV reboot.
-- webOS 11+ allows only one overlay window per app, so do not run this alongside
-  another overlay app (Glasshouse input bar, etc.).
-
-## Boot behaviour (0.4.1)
-
-* After every TV restart the reticle starts **OFF**. `reticle-control.py` compares the kernel boot id with `/media/developer/reticle-boot-id` and, on a new boot, sets `enabled:false` (retrying until the luna bus answers) before the watcher starts. Shape, colour and inputs are kept.
-* Turn it on from the web page or the Reticle Settings tile.
-* The overlay app is installed with `visible:false`, so it has no launcher tile; the watcher launches it by id.
-* The old `90-reticle` boot waker was removed: it woke the service, which could launch the overlay before it had been turned off.
+Code: MIT (`LICENSE`). Reticle artwork: Kenney Crosshair Pack, CC0 (`assets/LICENSE-Kenney-CC0.txt`).
