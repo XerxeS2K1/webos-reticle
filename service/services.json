@@ -1,0 +1,10 @@
+{
+  "id": "org.hermes.reticle.service",
+  "description": "Reticle settings and overlay supervisor",
+  "services": [
+    {
+      "name": "org.hermes.reticle.service",
+      "trustLevel": "trusted"
+    }
+  ]
+}

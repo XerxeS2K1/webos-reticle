@@ -1,0 +1,13 @@
+{
+  "style": "cross",
+  "size": 26,
+  "gap": 10,
+  "thickness": 3,
+  "color": "#00ff88",
+  "opacity": 0.9,
+  "dot": 2,
+  "outline": true,
+  "dx": 0,
+  "dy": 0,
+  "grid": false
+}

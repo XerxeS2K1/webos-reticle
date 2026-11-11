@@ -1,0 +1,22 @@
+{
+  "id": "org.hermes.reticle",
+  "version": "0.6.3",
+  "vendor": "Hermes",
+  "type": "web",
+  "main": "index.html",
+  "title": "Reticle overlay",
+  "icon": "icon.png",
+  "largeIcon": "icon.png",
+  "resolution": "1920x1080",
+  "defaultWindowType": "overlay",
+  "transparent": true,
+  "noSplashOnLaunch": true,
+  "disableBackHistoryAPI": true,
+  "appCategory": [
+    "utilities"
+  ],
+  "services": [
+    "org.hermes.reticle.service"
+  ],
+  "visible": false
+}

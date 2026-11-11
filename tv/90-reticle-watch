@@ -1,0 +1,5 @@
+#!/bin/sh
+# init.d entry: start the reticle watcher detached.
+# run-parts waits for each script, so this must not stay in the foreground.
+[ -x /media/developer/reticle-watch.sh ] && nohup /media/developer/reticle-watch.sh >/dev/null 2>&1 &
+exit 0

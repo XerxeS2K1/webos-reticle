@@ -1,0 +1,5 @@
+{
+  "name": "org.hermes.reticle.service",
+  "version": "1.0.0",
+  "main": "service.js"
+}

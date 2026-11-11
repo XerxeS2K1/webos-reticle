@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Reticle</title>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: transparent !important;
+    overflow: hidden;
+    cursor: none;
+  }
+  canvas { position: fixed; inset: 0; background: transparent; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="luna.js"></script>
+<script src="designs.js"></script>
+<script src="design.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var DEFAULTS = {
+    style: "cross", size: 26, gap: 10, thickness: 3, color: "#00ff88",
+    opacity: 0.9, dot: 2, outline: true, dx: 0, dy: 0, grid: false, image: -1
+  };
+  // The settings/service app hands us the live state over luna; if the service
+  // is not answering we fall back to the settings.json shipped beside this file.
+  var SERVICE = "luna://org.hermes.reticle.service";
+  var cfg = {};
+  var enabled = true;
+  var hidden = false;
+  var closing = false;
+  var lastKey = "";
+  var fails = 0;
+  var polls = 0;
+  var CACHE_KEY = "reticle-state";
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+
+  function merge(base, extra) {
+    var out = {}, k;
+    for (k in base) out[k] = base[k];
+    if (extra) for (k in extra) if (extra[k] !== null && extra[k] !== undefined) out[k] = extra[k];
+    return out;
+  }
+
+  function resetCanvas() {
+    var dpr = window.devicePixelRatio || 1;
+    var w = window.innerWidth || 1920;
+    var h = window.innerHeight || 1080;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: w, h: h };
+  }
+
+  function draw() {
+    var dim = resetCanvas();
+    ctx.clearRect(0, 0, dim.w, dim.h);
+    if (hidden || !enabled) return;
+
+    // Scale so the reticle looks the same on 1080p and 4K panels.
+    var s = Math.max(0.5, Math.min(3, dim.h / 1080));
+    var size = Math.max(1, cfg.size) * s;
+    var gap = Math.max(0, cfg.gap) * s;
+    var th = Math.max(1, cfg.thickness * s);
+    var dot = Math.max(0, cfg.dot) * s;
+    var cx = dim.w / 2 + (cfg.dx || 0) * s;
+    var cy = dim.h / 2 + (cfg.dy || 0) * s;
+
+    ctx.globalAlpha = cfg.opacity;
+
+    function line(x1, y1, x2, y2, width, colour) {
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = width;
+      ctx.lineCap = "butt";
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function arc(r, width, colour, filled) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      if (filled) {
+        ctx.fillStyle = colour;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+    }
+
+    function shape(width, colour) {
+      var style = cfg.style || "cross";
+      if (style === "dot") {
+        // thickness sets the dot, the centre-dot slider adds to it
+        arc(th + dot + (width - th) / 2, 0, colour, true);
+      } else if (style === "circle") {
+        arc(size, width, colour, false);
+      } else if (style === "t") {
+        // like Cross without the top arm: the bar runs through the aim point
+        line(cx - gap, cy, cx - gap - size, cy, width, colour);
+        line(cx + gap, cy, cx + gap + size, cy, width, colour);
+        line(cx, cy + gap, cx, cy + gap + size, width, colour);
+      } else if (style === "corners") {
+        var len = size * 0.45;
+        line(cx - size, cy - size, cx - size + len, cy - size, width, colour);
+        line(cx - size, cy - size, cx - size, cy - size + len, width, colour);
+        line(cx + size, cy - size, cx + size - len, cy - size, width, colour);
+        line(cx + size, cy - size, cx + size, cy - size + len, width, colour);
+        line(cx - size, cy + size, cx - size + len, cy + size, width, colour);
+        line(cx - size, cy + size, cx - size, cy + size - len, width, colour);
+        line(cx + size, cy + size, cx + size - len, cy + size, width, colour);
+        line(cx + size, cy + size, cx + size, cy + size - len, width, colour);
+      } else if (style === "brackets") {
+        var arm = size * 0.7;
+        line(cx - size, cy - arm, cx - size, cy + arm, width, colour);
+        line(cx - size, cy - arm, cx - size + size * 0.35, cy - arm, width, colour);
+        line(cx - size, cy + arm, cx - size + size * 0.35, cy + arm, width, colour);
+        line(cx + size, cy - arm, cx + size, cy + arm, width, colour);
+        line(cx + size, cy - arm, cx + size - size * 0.35, cy - arm, width, colour);
+        line(cx + size, cy + arm, cx + size - size * 0.35, cy + arm, width, colour);
+      } else {
+        line(cx, cy - gap, cx, cy - gap - size, width, colour);
+        line(cx, cy + gap, cx, cy + gap + size, width, colour);
+        line(cx - gap, cy, cx - gap - size, cy, width, colour);
+        line(cx + gap, cy, cx + gap + size, cy, width, colour);
+      }
+      // centre dot for every built-in shape except Dot itself (outline pass is a bit bigger)
+      if (style !== "dot" && dot > 0) arc(dot + (width - th) / 2, 0, colour, true);
+    }
+
+    if (cfg.grid) {
+      var tw = dim.w, thh = dim.h, tc = tw / 2, tcy = thh / 2;
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "rgba(255,255,255,0.20)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var i = 1; i < 10; i++) {
+        ctx.moveTo(Math.round(tw * i / 10) + 0.5, 0);
+        ctx.lineTo(Math.round(tw * i / 10) + 0.5, thh);
+        ctx.moveTo(0, Math.round(thh * i / 10) + 0.5);
+        ctx.lineTo(tw, Math.round(thh * i / 10) + 0.5);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,0,255,0.9)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, Math.round(tcy) + 0.5); ctx.lineTo(tw, Math.round(tcy) + 0.5);
+      ctx.moveTo(Math.round(tc) + 0.5, 0); ctx.lineTo(Math.round(tc) + 0.5, thh);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.lineWidth = 2;
+      var m = 46;
+      ctx.beginPath();
+      ctx.moveTo(1, m); ctx.lineTo(1, 1); ctx.lineTo(m, 1);
+      ctx.moveTo(tw - m, 1); ctx.lineTo(tw - 1, 1); ctx.lineTo(tw - 1, m);
+      ctx.moveTo(1, thh - m); ctx.lineTo(1, thh - 1); ctx.lineTo(m, thh - 1);
+      ctx.moveTo(tw - m, thh - 1); ctx.lineTo(tw - 1, thh - 1); ctx.lineTo(tw - 1, thh - m);
+      ctx.stroke();
+    }
+
+    var imgIdx = Math.round(Number(cfg.image));
+    if (imgIdx >= 0 && imgIdx <= 199) {
+      drawDesign(ctx, imgIdx, cx, cy, cfg, s);
+      if (dot > 0) {
+        if (cfg.outline) arc(dot + 1.5 * s, 0, "rgba(0,0,0,0.85)", true);
+        arc(dot, 0, cfg.color, true);
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (cfg.outline) shape(th + 2 * s, "rgba(0,0,0,0.85)");
+    shape(th, cfg.color);
+
+
+    if (dot > 0 && (cfg.style === "cross" || cfg.style === "t" || cfg.style === "corners")) {
+      if (cfg.outline) arc(dot + 1.5 * s, 0, "rgba(0,0,0,0.85)", true);
+      arc(dot, 0, cfg.color, true);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function loadSettings() {
+    return fetch("settings.json", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { cfg = merge(DEFAULTS, j); })
+      .catch(function () { cfg = merge(DEFAULTS, null); });
+  }
+
+  function applyState(s) {
+    if (!s) return;
+    var key = JSON.stringify(s);
+    if (key === lastKey) return;
+    lastKey = key;
+    enabled = s.enabled !== false;
+    cfg = merge(DEFAULTS, s.reticle);
+    // the app's own storage is the only persistent place available to us
+    try { localStorage.setItem(CACHE_KEY, key); } catch (err) {}
+    draw();
+    // "Off" means off: blank the canvas, then ask WAM to close us so the
+    // overlay window is not left sitting above the picture.
+    if (!enabled && !closing) {
+      closing = true;
+      try { window.close(); } catch (err) { closing = false; }
+    }
+    if (enabled) closing = false;
+  }
+
+  function restoreCache() {
+    try {
+      var raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      if (!s || !s.reticle) return;
+      webOS.service.request(SERVICE + "/putState", {
+        method: "putState",
+        parameters: { restore: s },
+        onSuccess: function () {},
+        onFailure: function () {}
+      });
+    } catch (err) { /* nothing cached yet */ }
+  }
+
+  function poll() {
+    if (!(window.webOS && webOS.service && webOS.service.request)) {
+      setTimeout(poll, 1000);
+      return;
+    }
+    webOS.service.request(SERVICE + "/getState", {
+      method: "getState",
+      parameters: { who: "overlay" },
+      onSuccess: function (res) {
+        fails = 0;
+        applyState(res && res.state);
+        if (++polls % 6 === 0) {
+          webOS.service.request(SERVICE + "/report", {
+            method: "report",
+            parameters: { color: cfg.color, size: cfg.size, style: cfg.style, opacity: cfg.opacity, hidden: hidden },
+            onSuccess: function () {},
+            onFailure: function () {}
+          });
+        }
+      },
+      onFailure: function () {
+        // service not up yet (or crashed): keep the last look, keep asking
+        if (++fails === 3) loadSettings().then(draw);
+      },
+      onComplete: function () { setTimeout(poll, 500); }
+    });
+  }
+
+  // Remote keys only reach us on some firmware; if they do, they nudge the look.
+  function onKey(e) {
+    var k = (e.key || "") + "";
+    var code = e.keyCode || e.which || 0;
+    var ch = false;
+    if (k === "ArrowUp" || code === 38) { cfg.size = Math.min(60, cfg.size + 2); ch = true; }
+    else if (k === "ArrowDown" || code === 40) { cfg.size = Math.max(4, cfg.size - 2); ch = true; }
+    else if (k === "ArrowLeft" || code === 37) { cfg.opacity = Math.max(0.2, +(cfg.opacity - 0.1).toFixed(2)); ch = true; }
+    else if (k === "ArrowRight" || code === 39) { cfg.opacity = Math.min(1, +(cfg.opacity + 0.1).toFixed(2)); ch = true; }
+    else if (k === "Enter" || code === 13 || k === " " || code === 32) { hidden = !hidden; ch = true; }
+    else if (k === "Backspace" || code === 461 || k === "Escape" || code === 27) {
+      hidden = true; ch = true;
+      if (window.webOS && window.webOS.platformBack) { try { window.webOS.platformBack(); } catch (err) {} }
+    } else if (k === "0" || code === 48) { cfg.dot = cfg.dot > 0 ? 0 : 2; ch = true; }
+    if (ch) { draw(); e.preventDefault && e.preventDefault(); }
+  }
+
+  document.addEventListener("keydown", onKey, false);
+  window.addEventListener("resize", function () { draw(); }, false);
+  window.addEventListener("webOSRelaunch", function () { hidden = false; draw(); }, false);
+
+  loadSettings().then(function () {
+    draw();
+    restoreCache();
+    poll();
+  });
+})();
+</script>
+</body>
+</html>

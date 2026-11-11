@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Reticle</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #0d1114; color: #e8eef2;
+    font-family: "LG Smart UI", "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden; -webkit-user-select: none; user-select: none;
+  }
+  #wrap { display: flex; height: 100%; padding: 48px 56px; gap: 44px; }
+  #left { flex: 1 1 auto; display: flex; flex-direction: column; }
+  #stage {
+    position: relative; flex: 1 1 auto;
+    border-radius: 14px; overflow: hidden;
+    background: radial-gradient(circle at 50% 45%, #24405c 0%, #16222e 45%, #0a0f13 100%);
+    box-shadow: inset 0 0 0 1px #223038;
+  }
+  #prev { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #stageTag {
+    position: absolute; left: 18px; bottom: 14px;
+    font-size: 20px; color: #7c8f9c; letter-spacing: .06em;
+  }
+  #right { flex: 0 0 640px; display: flex; flex-direction: column; }
+  h1 { font-size: 30px; font-weight: 600; margin: 0 0 4px 4px; letter-spacing: .02em; }
+  #sub { font-size: 19px; color: #7d909d; margin: 0 0 18px 4px; }
+  #rows { flex: 1 1 auto; overflow: hidden; }
+  .row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 15px 20px; margin-bottom: 8px; border-radius: 10px;
+    background: #151c22; border: 2px solid transparent;
+    font-size: 26px;
+  }
+  .row.sel { background: #1d2a24; border-color: #4fd18b; }
+  .row .val { color: #9fb3c0; font-variant-numeric: tabular-nums; }
+  .row.sel .val { color: #7ff0b4; }
+  .row .val.on { color: #7ff0b4; }
+  .row .val.off { color: #6d7d88; }
+  .swatch {
+    display: inline-block; width: 22px; height: 22px; border-radius: 5px;
+    vertical-align: -3px; margin-right: 10px; box-shadow: 0 0 0 1px #0006;
+  }
+  #foot {
+    margin-top: 14px; padding: 0 4px; font-size: 19px; color: #71838f;
+    display: flex; justify-content: space-between;
+  }
+  #toast { color: #4fd18b; opacity: 0; transition: opacity .2s; }
+  #toast.show { opacity: 1; }
+  .arrow { color: #566873; font-size: 20px; margin: 0 6px; }
+  .row.sel .arrow { color: #4fd18b; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="left">
+    <div id="stage">
+      <canvas id="prev"></canvas>
+      <div id="stageTag">preview — this is how it looks on the picture</div>
+    </div>
+  </div>
+  <div id="right">
+    <h1>Reticle</h1>
+    <div id="sub">Up / Down to move · Left / Right to change · Back to exit</div>
+    <div id="rows"></div>
+    <div id="foot"><span id="hint">changes apply straight away</span><span id="toast">saved</span></div>
+  </div>
+</div>
+<script src="luna.js"></script>
+<script src="designs.js"></script>
+<script src="design.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var SERVICE = "luna://org.hermes.reticle.service";
+  var SHAPES = ["cross", "dot", "circle", "t", "corners", "brackets"];
+  var SHAPE_LABELS = ["Cross", "Dot", "Circle", "T mark", "Corners", "Brackets"];
+  function hexToHsv(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return [0, 0, 1];
+    var n = parseInt(m[1], 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d) h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, mx ? d / mx : 0, mx];
+  }
+  function hsvToHex(h, s, v) {
+    h = ((h % 360) + 360) % 360;
+    var f = n => { var k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+    var x = n => Math.round(f(n) * 255).toString(16).padStart(2, "0");
+    return "#" + x(5) + x(3) + x(1);
+  }
+  
+  var hsvCache = [140, 1, 1];
+  function curHsv() {
+    var c = String(state.reticle.color).toLowerCase();
+    if (hsvToHex(hsvCache[0], hsvCache[1], hsvCache[2]) !== c) {
+      var n = hexToHsv(c);
+      hsvCache = [n[1] && n[2] ? n[0] : hsvCache[0], n[1], n[2]];
+    }
+    return hsvCache;
+  }
+  var COLORS = ["#00ff88", "#00d5ff", "#ff2d55", "#ffd400", "#ffffff", "#ff8a00"];
+
+  var state = null;
+  var available = [];
+  var sel = 0;
+  var rows = [];
+  var pending = null, pendingTimer = null;
+
+  var canvas = document.getElementById("prev");
+  var ctx = canvas.getContext("2d");
+
+  /* ---------- service calls ---------- */
+
+  var PROXY = "http://127.0.0.1:8765";
+  // The luna service is marked "trusted", so only apps in its own package may
+  // call it - this settings screen is a separate package and its bridge calls
+  // are dropped. Go through the local control service instead (same state, one
+  // owner) and keep luna as a fallback.
+  function req(method, params, onOk) {
+    if (method === "getState") {
+      fetch(PROXY + "/api/state", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (res) { if (onOk) onOk({ returnValue: true, state: res, available: res.available }); })
+        .catch(function () { lunaReq(method, params, onOk); });
+      return;
+    }
+    fetch(PROXY + "/api/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params || {})
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) { if (onOk) onOk({ returnValue: true, state: res }); })
+      .catch(function () { lunaReq(method, params, onOk); });
+  }
+
+  function lunaReq(method, params, onOk) {
+    if (!window.webOS || !webOS.service) { toast("no luna"); return; }
+    webOS.service.request(SERVICE + "/" + method, {
+      method: method,
+      parameters: params || {},
+      onSuccess: function (res) { if (onOk) onOk(res); },
+      onFailure: function (err) { toast("TV service not answering"); }
+    });
+  }
+
+  function put(payload) {
+    state = Object.assign({}, state, payload.state || {});
+    if (payload.enabled !== undefined) state.enabled = payload.enabled;
+    if (payload.inputs) state.inputs = payload.inputs;
+    if (payload.reticle) state.reticle = Object.assign({}, state.reticle, payload.reticle);
+    // optimistic local update, then tell the service
+    pending = mergePending(pending, payload);
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(flush, 100);
+    render(); draw();
+  }
+
+  function mergePending(a, b) {
+    a = a || {};
+    if (b.enabled !== undefined) a.enabled = b.enabled;
+    if (b.inputs) a.inputs = b.inputs;
+    if (b.reticle) a.reticle = Object.assign({}, a.reticle || {}, b.reticle);
+    return a;
+  }
+
+  function flush() {
+    var body = pending;
+    pending = null;
+    if (!body) return;
+    req("putState", body, function (res) {
+      if (res && res.state) { state = res.state; available = res.available || available; render(); draw(); }
+      toast();
+    });
+  }
+
+  function toast() {
+    var t = document.getElementById("toast");
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("show"); }, 900);
+  }
+  var toastTimer = null;
+
+  /* ---------- rows ---------- */
+
+  function buildRows() {
+    rows = [];
+    rows.push({ key: "enabled", label: "Reticle", kind: "bool" });
+    rows.push({ key: "style", label: "Shape", kind: "enum", values: SHAPES, labels: SHAPE_LABELS });
+    rows.push({ key: "image", label: "Design (0-199)", kind: "num", min: -1, max: 199, step: 1 });
+    rows.push({ key: "color", label: "Colour presets", kind: "color" });
+    rows.push({ key: "hue", label: "Colour wheel: hue", kind: "hsv", i: 0 });
+    rows.push({ key: "sat", label: "Colour wheel: strength", kind: "hsv", i: 1 });
+    rows.push({ key: "bri", label: "Colour wheel: brightness", kind: "hsv", i: 2 });
+    rows.push({ key: "size", label: "Size", kind: "num", min: 4, max: 60, step: 1 });
+    rows.push({ key: "gap", label: "Centre gap", kind: "num", min: 0, max: 40, step: 1 });
+    rows.push({ key: "thickness", label: "Thickness", kind: "num", min: 1, max: 8, step: 1 });
+    rows.push({ key: "opacity", label: "Opacity", kind: "pct", min: 10, max: 100, step: 5 });
+    rows.push({ key: "dot", label: "Centre dot", kind: "num", min: 0, max: 12, step: 1 });
+    rows.push({ key: "dx", label: "Offset X", kind: "num", min: -400, max: 400, step: 4, signed: true });
+    rows.push({ key: "dy", label: "Offset Y", kind: "num", min: -300, max: 300, step: 4, signed: true });
+    rows.push({ key: "grid", label: "Test pattern", kind: "bool" });
+    for (var i = 0; i < available.length; i++) {
+      rows.push({ key: "input", input: available[i][0], label: "Show on " + available[i][1], kind: "bool" });
+    }
+    rows.push({ key: "reset", label: "Reset to defaults", kind: "action" });
+  }
+
+  function el(html) { var d = document.createElement("div"); d.innerHTML = html; return d.firstChild; }
+
+  // single place the UI refreshes after a change or a state fetch
+  function render() {
+    updateRows(); draw();
+    if (state && state.url) {
+      document.getElementById("hint").textContent = "Phone / PC page: " + state.url.replace("http://", "");
+    }
+  }
+
+  function build() {
+    var box = document.getElementById("rows");
+    box.innerHTML = "";
+    buildRows();
+    rows.forEach(function (r, i) {
+      var node = el('<div class="row" data-i="' + i + '">' +
+        '<span class="lab">' + r.label + '</span>' +
+        '<span class="val"></span></div>');
+      box.appendChild(node);
+      r.node = node;
+    });
+    updateRows();
+  }
+
+  function rowValue(r) {
+    var rt = state.reticle;
+    switch (r.kind) {
+      case "bool":
+        if (r.key === "input") return state.inputs.indexOf(r.input) >= 0 ? "On" : "Off";
+        if (r.key === "enabled") return state.enabled ? "On" : "Off";
+        return rt[r.key] ? "On" : "Off";
+      case "enum":
+        return r.labels[r.values.indexOf(rt.style)] || rt.style;
+      case "color":
+        return '<span class="swatch" style="background:' + rt.color + '"></span>' + rt.color;
+      case "hsv":
+        var hv = curHsv();
+        var shown = r.i === 0 ? Math.round(hv[0]) + "°" : Math.round(hv[r.i] * 100) + "%";
+        return '<span class="swatch" style="background:' + rt.color + '"></span>' + shown;
+      case "pct":
+        return Math.round(rt.opacity * 100) + "%";
+      case "num":
+        var v = rt[r.key];
+        if (r.key === "image") return v < 0 ? "Built-in shape" : "#" + v;
+        return (r.signed && v > 0 ? "+" : "") + v;
+      case "action":
+        return "";
+    }
+    return "";
+  }
+
+  function updateRows() {
+    if (!state || !state.reticle) return;
+    rows.forEach(function (r, i) {
+      var v = rowValue(r);
+      var val = r.node.querySelector(".val");
+      val.innerHTML = v;
+      val.className = "val" + (v === "On" ? " on" : v === "Off" ? " off" : "");
+      r.node.querySelector(".lab").innerHTML = r.label +
+        (r.kind === "action" ? "" : ' <span class="arrow">‹ ›</span>');
+      r.node.classList.toggle("sel", i === sel);
+    });
+    var selNode = rows[sel] && rows[sel].node;
+    if (selNode && selNode.scrollIntoView) selNode.scrollIntoView({ block: "nearest" });
+  }
+
+  /* ---------- keys ---------- */
+
+  function change(dir) {
+    var r = rows[sel];
+    if (!r) return;
+    var rt = state.reticle;
+    if (r.kind === "bool") {
+      if (r.key === "input") {
+        var has = state.inputs.indexOf(r.input) >= 0;
+        var next = state.inputs.filter(function (x) { return x !== r.input; });
+        if (!has) next = next.concat([r.input]);
+        put({ inputs: next });
+      } else if (r.key === "enabled") {
+        put({ enabled: !state.enabled });
+      } else {
+        var patch = {}; patch[r.key] = !rt[r.key];
+        put({ reticle: patch });
+      }
+    } else if (r.kind === "enum") {
+      var i = SHAPES.indexOf(rt.style);
+      i = (i + dir + SHAPES.length) % SHAPES.length;
+      put({ reticle: { style: SHAPES[i] } });
+    } else if (r.kind === "color") {
+      var c = COLORS.indexOf(String(rt.color).toLowerCase());
+      c = (c < 0 ? 0 : c + dir + COLORS.length) % COLORS.length;
+      put({ reticle: { color: COLORS[c] } });
+    } else if (r.kind === "hsv") {
+      var hv = curHsv().slice();
+      if (r.i === 0) hv[0] = (hv[0] + dir * 6 + 360) % 360;
+      else hv[r.i] = Math.min(1, Math.max(r.i === 2 ? 0.05 : 0, Math.round((hv[r.i] + dir * 0.05) * 100) / 100));
+      hsvCache = hv;
+      put({ reticle: { color: hsvToHex(hv[0], hv[1], hv[2]) } });
+    } else if (r.kind === "pct") {
+      var pc = Math.round(rt.opacity * 100) + dir * r.step;
+      pc = Math.min(r.max, Math.max(r.min, pc));
+      put({ reticle: { opacity: pc / 100 } });
+    } else if (r.kind === "num") {
+      var nv = rt[r.key] + dir * r.step;
+      nv = Math.min(r.max, Math.max(r.min, nv));
+      var p = {}; p[r.key] = nv;
+      put({ reticle: p });
+    }
+  }
+
+  function activate() {
+    var r = rows[sel];
+    if (!r) return;
+    if (r.kind === "action") {
+      req("putState", { reticle: { style: "cross", size: 26, gap: 10, thickness: 3, color: "#00ff88", opacity: 0.9, dot: 2, outline: true, dx: 0, dy: 0, grid: false, image: -1 } },
+        function (res) {
+          if (res && res.state) { state = res.state; render(); draw(); toast(); }
+        });
+    } else if (r.kind === "bool") {
+      change(1);
+    }
+  }
+
+  document.addEventListener("keydown", function (e) {
+    var k = e.keyCode || 0;
+    if (k === 38 || k === 33) { sel = Math.max(0, sel - 1); updateRows(); }
+    else if (k === 40 || k === 34) { sel = Math.min(rows.length - 1, sel + 1); updateRows(); }
+    else if (k === 37) { change(-1); }
+    else if (k === 39) { change(1); }
+    else if (k === 13) { activate(); }
+    else if (k === 461 || k === 27) {
+      if (window.webOS && webOS.platformBack) { try { webOS.platformBack(); } catch (err) { window.close(); } }
+      else { window.close(); }
+    }
+    e.preventDefault && e.preventDefault();
+  }, false);
+
+  /* ---------- colour wheel (shown while a colour row is selected) ---------- */
+
+  var wheelImg = null;
+  function makeWheel(N) {
+    var c = document.createElement("canvas"); c.width = c.height = N;
+    var g = c.getContext("2d"), im = g.createImageData(N, N), R = N / 2;
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+      var dx = x + 0.5 - R, dy = y + 0.5 - R, d = Math.sqrt(dx * dx + dy * dy), i = (y * N + x) * 4;
+      if (d > R) continue;
+      var hex = hsvToHex((Math.atan2(dy, dx) * 180 / Math.PI + 450) % 360, Math.min(1, d / R), 1);
+      var n = parseInt(hex.slice(1), 16);
+      im.data[i] = n >> 16 & 255; im.data[i + 1] = n >> 8 & 255; im.data[i + 2] = n & 255; im.data[i + 3] = 255;
+    }
+    g.putImageData(im, 0, 0);
+    return c;
+  }
+  function drawWheel(w, h, s) {
+    var D = Math.round(Math.min(w, h) * 0.30);
+    if (!wheelImg || wheelImg.width !== 200) wheelImg = makeWheel(200);
+    var x0 = 24, y0 = 24, R = D / 2, hv = curHsv();
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath(); ctx.arc(x0 + R, y0 + R, R + 10, 0, 6.2832); ctx.fill();
+    ctx.globalAlpha = 0.25 + 0.75 * hv[2];
+    ctx.drawImage(wheelImg, x0, y0, D, D);
+    ctx.globalAlpha = 1;
+    var a = (hv[0] - 90) * Math.PI / 180, kx = x0 + R + Math.cos(a) * hv[1] * R, ky = y0 + R + Math.sin(a) * hv[1] * R;
+    ctx.fillStyle = state.reticle.color;
+    ctx.lineWidth = 4; ctx.strokeStyle = "#fff";
+    ctx.beginPath(); ctx.arc(kx, ky, 11, 0, 6.2832); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  /* ---------- preview ---------- */
+
+  function draw() {
+    if (!state) return;
+    var w = canvas.clientWidth || 1080, h = canvas.clientHeight || 620;
+    var dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    // a hint of a scene so contrast is visible
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    for (var gx = 1; gx < 8; gx++) {
+      ctx.beginPath(); ctx.moveTo(w * gx / 8, 0); ctx.lineTo(w * gx / 8, h); ctx.stroke();
+    }
+    for (var gy = 1; gy < 5; gy++) {
+      ctx.beginPath(); ctx.moveTo(0, h * gy / 5); ctx.lineTo(w, h * gy / 5); ctx.stroke();
+    }
+
+    var rt = state.reticle;
+    var s = Math.max(0.4, Math.min(3, h / 1080)) * 1.7;   // preview scale
+    var size = Math.max(1, rt.size) * s;
+    var gap = Math.max(0, rt.gap) * s;
+    var th = Math.max(1, rt.thickness * s);
+    var dot = Math.max(0, rt.dot) * s;
+    var cx = w / 2 + (rt.dx || 0) * s * 0.55;
+    var cy = h / 2 + (rt.dy || 0) * s * 0.55;
+
+    function line(x1, y1, x2, y2, width, colour) {
+      ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.lineCap = "butt";
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    function arc(r, width, colour, filled) {
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      if (filled) { ctx.fillStyle = colour; ctx.fill(); }
+      else { ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.stroke(); }
+    }
+    function shape(width, colour) {
+      var st = rt.style || "cross";
+      if (st === "dot") arc(th + dot + (width - th) / 2, 0, colour, true);
+      else if (st === "circle") { arc(size, width, colour, false); }
+      else if (st === "t") {
+        line(cx - gap, cy, cx - gap - size, cy, width, colour);
+        line(cx + gap, cy, cx + gap + size, cy, width, colour);
+        line(cx, cy + gap, cx, cy + gap + size, width, colour);
+      } else if (st === "corners") {
+        var len = size * 0.45;
+        line(cx - size, cy - size, cx - size + len, cy - size, width, colour);
+        line(cx - size, cy - size, cx - size, cy - size + len, width, colour);
+        line(cx + size, cy - size, cx + size - len, cy - size, width, colour);
+        line(cx + size, cy - size, cx + size, cy - size + len, width, colour);
+        line(cx - size, cy + size, cx - size + len, cy + size, width, colour);
+        line(cx - size, cy + size, cx - size, cy + size - len, width, colour);
+        line(cx + size, cy + size, cx + size - len, cy + size, width, colour);
+        line(cx + size, cy + size, cx + size, cy + size - len, width, colour);
+      } else if (st === "brackets") {
+        var arm = size * 0.7;
+        line(cx - size, cy - arm, cx - size, cy + arm, width, colour);
+        line(cx - size, cy - arm, cx - size + size * 0.35, cy - arm, width, colour);
+        line(cx - size, cy + arm, cx - size + size * 0.35, cy + arm, width, colour);
+        line(cx + size, cy - arm, cx + size, cy + arm, width, colour);
+        line(cx + size, cy - arm, cx + size - size * 0.35, cy - arm, width, colour);
+        line(cx + size, cy + arm, cx + size - size * 0.35, cy + arm, width, colour);
+      } else {
+        line(cx, cy - gap, cx, cy - gap - size, width, colour);
+        line(cx, cy + gap, cx, cy + gap + size, width, colour);
+        line(cx - gap, cy, cx - gap - size, cy, width, colour);
+        line(cx + gap, cy, cx + gap + size, cy, width, colour);
+      }
+      if (st !== "dot" && dot > 0) arc(dot + (width - th) / 2, 0, colour, true);
+    }
+
+    ctx.globalAlpha = state.enabled ? rt.opacity : rt.opacity * 0.25;
+    var pi = Math.round(Number(rt.image));
+    if (pi >= 0 && pi <= 199) {
+      drawDesign(ctx, pi, cx, cy, rt, s);
+      if (dot > 0) {
+        if (rt.outline) arc(dot + 1.5 * s, 0, "rgba(0,0,0,0.85)", true);
+        arc(dot, 0, rt.color, true);
+      }
+      ctx.globalAlpha = 1;
+    } else {
+    if (rt.outline) shape(th + 2 * s, "rgba(0,0,0,0.85)");
+    shape(th, rt.color);
+    ctx.globalAlpha = 1;
+    }
+
+    var sr = rows[sel];
+    if (sr && (sr.kind === "hsv" || sr.kind === "color")) drawWheel(w, h, s);
+
+    if (rt.grid) {
+      ctx.strokeStyle = "rgba(255,0,255,0.9)"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, Math.round(h / 2) + 0.5); ctx.lineTo(w, Math.round(h / 2) + 0.5);
+      ctx.moveTo(Math.round(w / 2) + 0.5, 0); ctx.lineTo(Math.round(w / 2) + 0.5, h);
+      ctx.stroke();
+    }
+  }
+
+  window.addEventListener("resize", function () { draw(); }, false);
+
+  /* ---------- boot ---------- */
+
+  req("getState", {}, function (res) {
+    if (!res || !res.state) { toast("no state"); return; }
+    state = res.state;
+    available = res.available || available;
+    build();
+    updateRows();
+    draw();
+    document.getElementById("sub").textContent = state.statePath
+      ? "Up / Down to move · Left / Right to change · Back to exit"
+      : "Up / Down to move · Left / Right to change · Back to exit";
+  });
+
+  setTimeout(function () { if (!state) draw(); }, 400);
+})();
+</script>
+</body>
+</html>

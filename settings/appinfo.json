@@ -1,0 +1,20 @@
+{
+  "id": "org.hermes.reticle.settings",
+  "version": "0.6.3",
+  "vendor": "Hermes",
+  "type": "web",
+  "main": "index.html",
+  "title": "Reticle Settings",
+  "icon": "icon.png",
+  "largeIcon": "icon.png",
+  "bgColor": "#101418",
+  "uiRevision": 2,
+  "disableBackHistoryAPI": true,
+  "resolution": "1920x1080",
+  "appCategory": [
+    "utilities"
+  ],
+  "services": [
+    "org.hermes.reticle.service"
+  ]
+}
