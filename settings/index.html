@@ -27,7 +27,16 @@
   #right { flex: 0 0 640px; display: flex; flex-direction: column; }
   h1 { font-size: 30px; font-weight: 600; margin: 0 0 4px 4px; letter-spacing: .02em; }
   #sub { font-size: 19px; color: #7d909d; margin: 0 0 18px 4px; }
-  #rows { flex: 1 1 auto; overflow: hidden; }
+  #rowsWrap { position: relative; flex: 1 1 auto; min-height: 0; }
+  #rows { height: 100%; overflow: hidden; }
+  .more {
+    position: absolute; left: 0; right: 0; height: 64px; display: none;
+    align-items: center; justify-content: center; pointer-events: none;
+    font-size: 26px; color: #7ff0b4; letter-spacing: .08em;
+  }
+  .more.show { display: flex; }
+  #moreUp { top: 0; background: linear-gradient(#0d1114 20%, #0d111400); align-items: flex-start; padding-top: 4px; }
+  #moreDown { bottom: 0; background: linear-gradient(#0d111400, #0d1114 80%); align-items: flex-end; padding-bottom: 4px; }
   .row {
     display: flex; align-items: center; justify-content: space-between;
     padding: 15px 20px; margin-bottom: 8px; border-radius: 10px;
@@ -76,7 +85,7 @@
   <div id="right">
     <h1>Reticle</h1>
     <div id="sub">Up / Down to move · Left / Right to change · Back to exit</div>
-    <div id="rows"></div>
+    <div id="rowsWrap"><div id="rows"></div><div class="more" id="moreUp">▲ more above</div><div class="more" id="moreDown">▼ more below</div></div>
     <div id="foot"><span id="hint"></span><span id="toast">saved</span></div>
   </div>
 </div>
@@ -294,6 +303,14 @@
     });
     var selNode = rows[sel] && rows[sel].node;
     if (selNode && selNode.scrollIntoView) selNode.scrollIntoView({ block: "nearest" });
+    updateMore();
+  }
+
+  // arrows that show there are more rows above / below the visible list
+  function updateMore() {
+    var box = document.getElementById("rows");
+    document.getElementById("moreUp").classList.toggle("show", box.scrollTop > 8);
+    document.getElementById("moreDown").classList.toggle("show", box.scrollTop + box.clientHeight < box.scrollHeight - 8);
   }
 
   /* ---------- keys ---------- */
